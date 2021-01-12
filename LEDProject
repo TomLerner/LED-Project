@@ -1,0 +1,235 @@
+#include <FastLED.h>
+#include <PushButton.h>
+
+FASTLED_USING_NAMESPACE
+
+//LED
+#define DATA_PIN    9                            // White: A5  :::  Red: 9
+//#define CLK_PIN   4
+#define LED_TYPE    WS2812B
+#define COLOR_ORDER GRB
+#define NUM_LEDS    150
+CRGB leds[NUM_LEDS];
+
+#include "constants.h"
+
+#define FRAMES_PER_SECOND 120
+
+// Push button for Pattren Animation Cycle
+#define buttonAnimationPin   3                   // White: A0  :::  Red: 3
+PushButton myButton(buttonAnimationPin);
+
+
+//Potentiometer for Brightness
+#define potBrightnessPin      A5                  // White: A2  :::  Red: A5
+
+
+CRGBPalette16 currentPalette = gGradientPalettes[0];
+CRGBPalette16 targetPalette;
+TBlendType    currentBlending;
+
+
+
+// --------------------------------------------------------------------------------------------------------------------------- SETUP EXECUTABLE ----------------------
+void setup() {
+  randomSeed(analogRead(0));
+
+  delay(1000); // 1 second delay for recovery
+
+  FastLED.addLeds<LED_TYPE, DATA_PIN, COLOR_ORDER>(leds, NUM_LEDS).setCorrection(TypicalLEDStrip); // tell FastLED about the LED strip configuration
+
+  pinMode(buttonAnimationPin, INPUT); // initialize the pushbuttons pin as an input for animation cycle
+  //pinMode(buttonPalettePin, INPUT); // initialize the pushbuttons pin as an input for palette cycle
+
+  Serial.begin(9600); // Allow Serial Monitor for debugging
+}
+// ------------------------------------------------------------------------------------------------------------------------------- END SETUP ------------------------
+
+
+// List of Patterns to cycle through.  Each is defined as a separate function below.
+typedef void (*SimplePatternList[])();
+// Decleration of all Animation Functions
+SimplePatternList gPatterns = { colorPalette, confetti, bpm, rainbowWithGlitter, juggle };
+                                 
+#define ARRAY_SIZE(gPatterns) (sizeof(gPatterns) / sizeof((gPatterns)[0]))
+uint8_t gCurrentPatternNumber = 0; // Index number of which pattern is current
+
+
+// List of Palettes to cycle through. All defined below.
+//extern const TProgmemRGBGradientPalettePtr gGradientPalettes[];
+//extern uint8_t gGradientPalettesCount;
+uint8_t gCurrentPaletteNumber = 0;        // Current number of available palettes the 'playlist' of color palettes
+
+uint8_t gHue = 0; // rotating "base color" used by many of the patterns
+
+//uint8_t gPatternCounter = 0;
+
+bool randomPattern = false;
+
+// ---------------------------------------------------------------------------------------------------------------------------MAIN EXECUTABLE ----------------------
+void loop()
+{
+
+
+  myButton.update();
+  //Serial.println("button checked");
+  myButtonIfCheck();
+
+
+
+  gPatterns[gCurrentPatternNumber]();                                                           // Select pattern based on index number from gPatterns list
+
+  if (randomPattern == true) {                                                                  // Check if Random Pattern is set to true
+    EVERY_N_SECONDS( 30 ) {                                                                           // Every n seconds
+      gCurrentPatternNumber = random(0, ARRAY_SIZE( gPatterns));                                      // Change to random pattern
+    }
+  }
+  
+
+  potentialBrightness();                                                                        // Check potentiometer for brighness change
+
+
+  EVERY_N_MILLISECONDS( 12 ) {                                                                  // Change Hue base color every X milliseconds
+    gHue++;  // slowly cycle the "base color" through the rainbow
+  }
+
+
+
+  FastLED.show();                                                                               // send the 'leds' array out to the actual LED strip
+  FastLED.delay(1000 / FRAMES_PER_SECOND);                                                      // insert a delay to keep the framerate modest
+
+}
+
+
+// ------------------------------------------------------------------------------------------------------- INPUT CONTROLS FUNCTIONS START ----------------------------
+
+// Animation (Pattern) change using Push Button
+void myButtonIfCheck()  {
+  if (myButton.isDoubleClicked())                                                                 // Double-click event
+  {
+    randomPattern = false;
+    gCurrentPatternNumber = (gCurrentPatternNumber - 2) % ARRAY_SIZE( gPatterns);                 // Move current pattern one options back (minus two because single click event is always initiated atm. -2 + 1 = -1 )
+    //Serial.println("Button double-clicked!");
+  }
+  if (myButton.isClicked())                                                                       // Click event
+  {
+    randomPattern = false;
+    gCurrentPatternNumber = (gCurrentPatternNumber + 1) % ARRAY_SIZE( gPatterns);                 // Move current pattern one option forward
+    //Serial.println("Button clicked!");
+  }
+  if (myButton.isHeld())                                                                          // Hold/long push event
+  {
+    randomPattern = true;                                                                         // Move current pattern one option forward
+    //Serial.println("Button held down!");
+  }
+}
+
+
+// REQUIRED: Add Pallete change using Push Button
+// if (myButton.isDoubleClicked())    {Move current pallete index one positions back}
+// if (myButton.isClicked())          {Move current pallete index one positions forward}          
+// if (myButton.isHeld())             {Change current pallete index randomly every X seconds}
+
+
+// REQUIRED: Add Brightness change using Push Button
+// if (myButton.isDoubleClicked())    {Move current brightness levels 10% down with minimum value of 20%}
+// if (myButton.isClicked())          {Move current brightness levels 10% up with maximum value of 100%}
+// if (myButton.isHeld())             {Change current brightness up 2% every 0.25 seconds in a linear fashion, when reaching 100% change to decrease the brightness in the same fashion until reaching 20%, then change to increase. Repeat until the button is released and set the brightness at that level}
+
+
+// Brightness Check using Potentiometer
+void potentialBrightness() {
+  FastLED.setBrightness(map(analogRead(potBrightnessPin), 0, 1050, 20, 100));               // scale the numbers from the potential value (20 - 100)
+}
+
+
+// ------------------------------------------------------------------------------------------------------------- ANIMATION FUNCTIONS START ----------------------------
+
+
+// Pattern Animation - Preset: Rainbow
+void rainbow()
+{
+  // FastLED's built-in rainbow generator
+  fill_rainbow( leds, NUM_LEDS/2, gHue, 5);
+}
+
+
+// Pattern Animation - Preset: Rainbow w/ Glitter
+void rainbowWithGlitter()
+{
+  // built-in FastLED rainbow, plus some random sparkly glitter
+  rainbow();
+  addGlitter(80);
+}
+
+
+// Pattern Animation Add-on - Preset: Glitter
+void addGlitter( fract8 chanceOfGlitter)
+{
+  if ( random8() < chanceOfGlitter) {
+    leds[ random16(NUM_LEDS) ] += CRGB::White;
+  }
+}
+
+
+// Pattern Animation - Preset: Confetti
+void confetti()
+{
+  // random colored speckles that blink in and fade smoothly
+  fadeToBlackBy( leds, NUM_LEDS, 20);
+  int pos = random16(NUM_LEDS);
+  leds[pos] += CHSV( gHue + random8(64), 200, 255);
+}
+
+
+// Pattern Animation - Preset: Sinelon
+void sinelon()
+{
+  // a colored dot sweeping back and forth, with fading trails
+  fadeToBlackBy( leds, NUM_LEDS, 20);
+  int pos = beatsin16( 13, 0, (NUM_LEDS - 1) );
+  leds[pos] += CHSV( gHue, 255, 192);
+}
+
+// Pattern Animation - Preset: BPM
+void bpm()
+{
+  // colored stripes pulsing at a defined Beats-Per-Minute (BPM)
+  uint8_t BeatsPerMinute = 80;
+  //CRGBPalette16 palette = PartyColors_p;
+  uint8_t beat = beatsin8( BeatsPerMinute, 64, 255);
+  //currentPalette = gBigVPalettes[ gCurrentPaletteNumber ];
+  nblendPaletteTowardPalette( currentPalette, targetPalette, 24);
+  for ( int i = 0; i < NUM_LEDS; i++) { //9948
+    leds[i] = ColorFromPalette(currentPalette, gHue + (i * 2), beat - gHue + (i * 10));
+  }
+}
+
+
+// Pattern Animation - Preset: Juggle
+void juggle() {
+  // eight colored dots, weaving in and out of sync with each other
+  fadeToBlackBy( leds, NUM_LEDS/2, 20);
+  byte dothue = 0;
+  for ( int i = 0; i < 8; i++) {
+    leds[beatsin16( i + 7, 0, (NUM_LEDS - 1))] |= CHSV(dothue, 200, 255);
+    dothue += 32;
+  }
+}
+
+// Pattern Animation - Preset: Color Palette
+void colorPalette() {
+  nblendPaletteTowardPalette( currentPalette, targetPalette, 24);
+  
+  static uint8_t colorIndex = 0;
+  colorIndex = colorIndex + 1;
+  
+  EVERY_N_SECONDS( 9 ) {
+    gCurrentPaletteNumber = random(0, gGradientPalettes);
+    targetPalette = gGradientPalettes[ gCurrentPaletteNumber ];
+  }
+  for( int i = 0; i < NUM_LEDS ; i++) {
+        leds[i] = ColorFromPalette( currentPalette, colorIndex, 100, LINEARBLEND);
+        colorIndex += 12;
+  }
+}
